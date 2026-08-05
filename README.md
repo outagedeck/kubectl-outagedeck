@@ -9,13 +9,20 @@ OutageDeck complements cluster and synthetic monitoring. It never treats an unre
 
 ## Install
 
-Download a release archive for macOS, Linux, or Windows from the [releases page](https://github.com/outagedeck/kubectl-outagedeck/releases), or build from source:
+Install the released plugin through its Krew manifest:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/outagedeck/kubectl-outagedeck/main/krew/outagedeck.yaml
+kubectl krew install --manifest=outagedeck.yaml
+```
+
+Or download a release archive for macOS, Linux, or Windows from the [releases page](https://github.com/outagedeck/kubectl-outagedeck/releases), or build from source:
 
 ```bash
 go install github.com/outagedeck/kubectl-outagedeck/cmd/kubectl-outagedeck@latest
 ```
 
-A submission to the central Krew index is planned for the first release.
+The central Krew-index submission is tracked in this repository's README after publication.
 
 ## Check named providers
 
