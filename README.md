@@ -80,6 +80,13 @@ Exit codes:
 
 Run `kubectl outagedeck --help` for all namespace, selector, kubeconfig, context, output, and timeout options.
 
+## Get proactive alerts
+
+The plugin answers when you run a check. [OutageDeck managed alerts](https://outagedeck.com/alerts?utm_source=krew&utm_medium=plugin&utm_campaign=krew_plugin) notify you when a watched provider changes state:
+
+- Free: email alerts for up to five named providers, with no card required.
+- Paid: Slack, Microsoft Teams, Discord, webhook, and email delivery; unlimited providers; whole-stack and per-service scopes; and a higher API quota.
+
 ## Data and privacy
 
 - Provider state comes from official vendor status feeds and is refreshed about every 10 minutes.
