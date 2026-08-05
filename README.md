@@ -22,7 +22,7 @@ Or download a release archive for macOS, Linux, or Windows from the [releases pa
 go install github.com/outagedeck/kubectl-outagedeck/cmd/kubectl-outagedeck@latest
 ```
 
-The central Krew-index submission is tracked in this repository's README after publication.
+Central Krew installation (`kubectl krew install outagedeck`) is pending review in [krew-index PR #6153](https://github.com/kubernetes-sigs/krew-index/pull/6153).
 
 ## Check named providers
 
