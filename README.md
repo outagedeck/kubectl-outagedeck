@@ -9,11 +9,11 @@ OutageDeck complements cluster and synthetic monitoring. It never treats an unre
 
 ## Install
 
-Install the released plugin through its Krew manifest:
+Install the released plugin from Krew's official index:
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/outagedeck/kubectl-outagedeck/main/krew/outagedeck.yaml
-kubectl krew install --manifest=outagedeck.yaml
+kubectl krew update
+kubectl krew install outagedeck
 ```
 
 Or download a release archive for macOS, Linux, or Windows from the [releases page](https://github.com/outagedeck/kubectl-outagedeck/releases), or build from source:
@@ -22,7 +22,11 @@ Or download a release archive for macOS, Linux, or Windows from the [releases pa
 go install github.com/outagedeck/kubectl-outagedeck/cmd/kubectl-outagedeck@latest
 ```
 
-Central Krew installation (`kubectl krew install outagedeck`) is pending review in [krew-index PR #6153](https://github.com/kubernetes-sigs/krew-index/pull/6153).
+Krew maintainer `ahmetb` approved the plugin after validating its naming,
+description, six platform definitions, file mappings, and unique functionality;
+[krew-index PR #6153](https://github.com/kubernetes-sigs/krew-index/pull/6153)
+merged on August 6, 2026. Future tagged releases automatically submit their
+version and verified asset hashes to Krew's index.
 
 ## Check named providers
 

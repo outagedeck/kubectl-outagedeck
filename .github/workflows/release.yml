@@ -1,0 +1,82 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: "1.23.x"
+          cache: false
+
+      - name: Test
+        run: go test -race ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build release archives
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          release_dir="$RUNNER_TEMP/outagedeck-release"
+          mkdir -p "$release_dir"
+
+          for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 windows/arm64; do
+            os=${target%/*}
+            arch=${target#*/}
+            package_dir="$RUNNER_TEMP/package-${os}-${arch}"
+            mkdir -p "$package_dir"
+
+            binary=kubectl-outagedeck
+            archive="kubectl-outagedeck_${os}_${arch}.tar.gz"
+            if [ "$os" = windows ]; then
+              binary=kubectl-outagedeck.exe
+              archive="kubectl-outagedeck_${os}_${arch}.zip"
+            fi
+
+            GOOS=$os GOARCH=$arch CGO_ENABLED=0 go build \
+              -trimpath \
+              -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" \
+              -o "$package_dir/$binary" \
+              ./cmd/kubectl-outagedeck
+            cp LICENSE "$package_dir/LICENSE"
+
+            if [ "$os" = windows ]; then
+              (cd "$package_dir" && zip -q "$release_dir/$archive" "$binary" LICENSE)
+            else
+              tar -C "$package_dir" -czf "$release_dir/$archive" "$binary" LICENSE
+            fi
+          done
+
+          (cd "$release_dir" && sha256sum kubectl-outagedeck_* > SHA256SUMS)
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "$RUNNER_TEMP"/outagedeck-release/* \
+            --verify-tag \
+            --generate-notes \
+            --title "$GITHUB_REF_NAME"
+
+      - name: Update Krew index
+        uses: rajatjindal/krew-release-bot@c970b8a8f6dbc2f2285a26e3ae160903b87002c3 # v0.0.51
