@@ -151,6 +151,16 @@ func providerURL(slug string) string {
 		"?utm_source=krew&utm_medium=plugin&utm_campaign=krew_plugin"
 }
 
+func stackAlertsURL(slugs []string) string {
+	query := url.Values{}
+	query.Set("stack", strings.Join(slugs, ","))
+	query.Set("utm_source", "krew")
+	query.Set("utm_medium", "plugin")
+	query.Set("utm_campaign", "krew_plugin")
+	query.Set("utm_content", "alerts_command")
+	return "https://outagedeck.com/account?" + query.Encode()
+}
+
 func fetchProvider(ctx context.Context, httpClient *http.Client, item target, apiKey string) result {
 	var payload providerEnvelope
 	endpoint := apiBase() + "/providers/" + url.PathEscape(item.Slug)
@@ -312,36 +322,67 @@ var failureRanks = map[string]int{
 	"never":        1 << 30,
 }
 
-func check(args []string, stdout, stderr io.Writer) int {
-	flags := flag.NewFlagSet("outagedeck", flag.ContinueOnError)
-	flags.SetOutput(stderr)
-	var opts options
+func bindDiscoveryFlags(flags *flag.FlagSet, opts *options) {
 	flags.BoolVar(&opts.allNamespaces, "all-namespaces", false, "inspect annotated workloads in every namespace")
 	flags.BoolVar(&opts.allNamespaces, "A", false, "shorthand for --all-namespaces")
 	flags.StringVar(&opts.annotation, "annotation", defaultAnnotation, "provider annotation key")
-	flags.StringVar(&opts.apiKey, "api-key", os.Getenv("OUTAGEDECK_API_KEY"), "optional OutageDeck API key")
 	flags.StringVar(&opts.context, "context", "", "kubectl context used for workload discovery")
-	flags.StringVar(&opts.failOn, "fail-on", "degraded", "degraded, outage, major_outage, or never")
-	flags.BoolVar(&opts.jsonOutput, "json", false, "print machine-readable JSON")
 	flags.StringVar(&opts.kubeconfig, "kubeconfig", "", "path to a kubeconfig file")
 	flags.StringVar(&opts.namespace, "namespace", "", "namespace used for workload discovery")
 	flags.StringVar(&opts.namespace, "n", "", "shorthand for --namespace")
 	flags.StringVar(&opts.selector, "selector", "", "label selector used for workload discovery")
 	flags.StringVar(&opts.selector, "l", "", "shorthand for --selector")
 	flags.DurationVar(&opts.timeout, "timeout", 10*time.Second, "timeout for kubectl and each API request")
+}
+
+func validateDiscoveryOptions(opts options) error {
+	if opts.namespace != "" && opts.allNamespaces {
+		return errors.New("--namespace and --all-namespaces cannot be used together")
+	}
+	if strings.TrimSpace(opts.annotation) == "" {
+		return errors.New("--annotation cannot be empty")
+	}
+	if opts.timeout <= 0 {
+		return errors.New("--timeout must be positive")
+	}
+	return nil
+}
+
+func resolveTargets(args []string, opts options) ([]target, error) {
+	if len(args) > 0 {
+		slugs, err := normalizeSlugs(args)
+		if err != nil {
+			return nil, err
+		}
+		targets := make([]target, 0, len(slugs))
+		for _, slug := range slugs {
+			targets = append(targets, target{Slug: slug})
+		}
+		return targets, nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), opts.timeout)
+	defer cancel()
+	payload, err := invokeKubectl(ctx, kubectlArgs(opts))
+	if err != nil {
+		return nil, fmt.Errorf("kubectl discovery failed: %w", err)
+	}
+	return targetsFromKubernetes(payload, opts.annotation)
+}
+
+func check(args []string, stdout, stderr io.Writer) int {
+	flags := flag.NewFlagSet("outagedeck", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	var opts options
+	bindDiscoveryFlags(flags, &opts)
+	flags.StringVar(&opts.apiKey, "api-key", os.Getenv("OUTAGEDECK_API_KEY"), "optional OutageDeck API key")
+	flags.StringVar(&opts.failOn, "fail-on", "degraded", "degraded, outage, major_outage, or never")
+	flags.BoolVar(&opts.jsonOutput, "json", false, "print machine-readable JSON")
 	if err := flags.Parse(args); err != nil {
 		return 1
 	}
-	if opts.namespace != "" && opts.allNamespaces {
-		fmt.Fprintln(stderr, "--namespace and --all-namespaces cannot be used together")
-		return 1
-	}
-	if strings.TrimSpace(opts.annotation) == "" {
-		fmt.Fprintln(stderr, "--annotation cannot be empty")
-		return 1
-	}
-	if opts.timeout <= 0 {
-		fmt.Fprintln(stderr, "--timeout must be positive")
+	if err := validateDiscoveryOptions(opts); err != nil {
+		fmt.Fprintln(stderr, err)
 		return 1
 	}
 	threshold, ok := failureRanks[strings.ToLower(opts.failOn)]
@@ -350,29 +391,10 @@ func check(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	var targets []target
-	if flags.NArg() > 0 {
-		slugs, err := normalizeSlugs(flags.Args())
-		if err != nil {
-			fmt.Fprintln(stderr, err)
-			return 1
-		}
-		for _, slug := range slugs {
-			targets = append(targets, target{Slug: slug})
-		}
-	} else {
-		ctx, cancel := context.WithTimeout(context.Background(), opts.timeout)
-		payload, err := invokeKubectl(ctx, kubectlArgs(opts))
-		cancel()
-		if err != nil {
-			fmt.Fprintf(stderr, "kubectl discovery failed: %v\n", err)
-			return 1
-		}
-		targets, err = targetsFromKubernetes(payload, opts.annotation)
-		if err != nil {
-			fmt.Fprintln(stderr, err)
-			return 1
-		}
+	targets, err := resolveTargets(flags.Args(), opts)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
 	}
 
 	ctx := context.Background()
@@ -437,11 +459,44 @@ func check(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+func alertsCommand(args []string, stdout, stderr io.Writer) int {
+	flags := flag.NewFlagSet("alerts", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	var opts options
+	bindDiscoveryFlags(flags, &opts)
+	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		return 1
+	}
+	if err := validateDiscoveryOptions(opts); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	targets, err := resolveTargets(flags.Args(), opts)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	slugs := make([]string, len(targets))
+	for index, item := range targets {
+		slugs[index] = item.Slug
+	}
+
+	fmt.Fprintf(stdout, "Set up alerts for %s:\n", strings.Join(slugs, ", "))
+	fmt.Fprintln(stdout, stackAlertsURL(slugs))
+	fmt.Fprintln(stdout, "\nThe selected stack will already be filled in after sign-in.")
+	fmt.Fprintln(stdout, "Free email alerts cover up to five providers.")
+	return 0
+}
+
 func usage(writer io.Writer) {
 	fmt.Fprintln(writer, `OutageDeck kubectl plugin — check external dependencies from official status feeds
 
 Usage:
   kubectl outagedeck [flags] [provider ...]
+  kubectl outagedeck alerts [flags] [provider ...]
 
 With provider arguments, checks those providers directly. Without arguments,
 discovers providers from outagedeck.com/providers annotations on Deployments,
@@ -452,6 +507,8 @@ Examples:
   kubectl outagedeck --all-namespaces
   kubectl outagedeck --namespace payments --selector app=checkout
   kubectl outagedeck --json --fail-on=outage
+  kubectl outagedeck alerts github cloudflare openai
+  kubectl outagedeck alerts --namespace payments
 
 Discovery flags:
   -n, --namespace string       namespace to inspect
@@ -476,6 +533,8 @@ Environment:
 func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) > 0 {
 		switch args[0] {
+		case "alerts":
+			return alertsCommand(args[1:], stdout, stderr)
 		case "version", "--version", "-v":
 			fmt.Fprintln(stdout, version)
 			return 0

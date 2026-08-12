@@ -31,7 +31,8 @@ metadata:
       discovers dependencies from `outagedeck.com/providers` annotations on
       Deployments, StatefulSets, and DaemonSets. Annotation discovery is
       read-only, resource names never leave the machine, and API failures are
-      never reported as operational.
+      never reported as operational. The `alerts` command turns either source
+      into a prefilled managed-alert setup link without sending cluster data.
 spec:
   version: {{ .TagName }}
   homepage: https://github.com/outagedeck/kubectl-outagedeck
@@ -43,7 +44,8 @@ spec:
     StatefulSets, and DaemonSets. Discovery is read-only and resource names,
     labels, kubeconfig data, and cluster credentials stay on the user's machine.
     The plugin supports namespace, all-namespace, label-selector, context,
-    kubeconfig, JSON-output, timeout, and severity-threshold options.
+    kubeconfig, JSON-output, timeout, and severity-threshold options. Its alerts
+    command builds a prefilled setup link from named or discovered providers.
   platforms:
   - selector:
       matchLabels:

@@ -113,6 +113,71 @@ func TestKubectlFailure(t *testing.T) {
 	}
 }
 
+func TestAlertsWithExplicitProviders(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	exit := run([]string{"alerts", "GitHub,cloudflare", "github"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit = %d, stderr = %s", exit, stderr.String())
+	}
+	for _, expected := range []string{
+		"Set up alerts for github, cloudflare:",
+		"stack=github%2Ccloudflare",
+		"utm_source=krew",
+		"utm_medium=plugin",
+		"utm_campaign=krew_plugin",
+		"utm_content=alerts_command",
+		"selected stack will already be filled in after sign-in",
+		"Free email alerts cover up to five providers",
+	} {
+		if !strings.Contains(stdout.String(), expected) {
+			t.Fatalf("missing %q in output:\n%s", expected, stdout.String())
+		}
+	}
+}
+
+func TestAlertsDiscoversWorkloadProviders(t *testing.T) {
+	original := invokeKubectl
+	defer func() { invokeKubectl = original }()
+	invokeKubectl = func(_ context.Context, args []string) ([]byte, error) {
+		want := []string{"get", defaultResources, "--output=json", "--ignore-not-found", "--namespace", "payments", "--selector", "tier=api"}
+		if !reflect.DeepEqual(args, want) {
+			t.Fatalf("kubectl args = %#v, want %#v", args, want)
+		}
+		return []byte(`{"items":[
+          {"kind":"Deployment","metadata":{"name":"checkout","namespace":"payments","annotations":{"outagedeck.com/providers":"stripe, github"}}},
+          {"kind":"StatefulSet","metadata":{"name":"ledger","namespace":"payments","annotations":{"outagedeck.com/providers":"aws"}}}
+        ]}`), nil
+	}
+
+	var stdout, stderr bytes.Buffer
+	exit := run([]string{"alerts", "--namespace", "payments", "--selector", "tier=api"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit = %d, stderr = %s", exit, stderr.String())
+	}
+	for _, expected := range []string{
+		"Set up alerts for aws, github, stripe:",
+		"stack=aws%2Cgithub%2Cstripe",
+		"utm_content=alerts_command",
+	} {
+		if !strings.Contains(stdout.String(), expected) {
+			t.Fatalf("missing %q in output:\n%s", expected, stdout.String())
+		}
+	}
+}
+
+func TestAlertsValidatesDiscoveryOptions(t *testing.T) {
+	for _, args := range [][]string{
+		{"alerts", "--namespace", "one", "--all-namespaces"},
+		{"alerts", "--timeout", "0s"},
+		{"alerts", "bad slug"},
+	} {
+		var stdout, stderr bytes.Buffer
+		if exit := run(args, &stdout, &stderr); exit != 1 {
+			t.Fatalf("args = %#v, exit = %d", args, exit)
+		}
+	}
+}
+
 func TestOptionsValidation(t *testing.T) {
 	for _, args := range [][]string{
 		{"--namespace", "one", "--all-namespaces"},
@@ -132,7 +197,9 @@ func TestVersionAndHelp(t *testing.T) {
 		t.Fatalf("version exit = %d, stdout = %s", exit, stdout.String())
 	}
 	stdout.Reset()
-	if exit := run([]string{"--help"}, &stdout, &stderr); exit != 0 || !strings.Contains(stdout.String(), "kubectl outagedeck") {
+	if exit := run([]string{"--help"}, &stdout, &stderr); exit != 0 ||
+		!strings.Contains(stdout.String(), "kubectl outagedeck") ||
+		!strings.Contains(stdout.String(), "kubectl outagedeck alerts") {
 		t.Fatalf("help exit = %d, stdout = %s", exit, stdout.String())
 	}
 }
