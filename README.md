@@ -40,6 +40,16 @@ OK GitHub: Operational — All Systems Operational
 !! OpenAI: Degraded — OpenAI reports an active incident
 ```
 
+Turn the same stack into a prefilled alert setup without re-entering it:
+
+```console
+$ kubectl outagedeck alerts aws cloudflare github openai
+Set up alerts for aws, cloudflare, github, openai:
+https://outagedeck.com/account?stack=aws%2Ccloudflare%2Cgithub%2Copenai&utm_campaign=krew_plugin&utm_content=alerts_command&utm_medium=plugin&utm_source=krew
+```
+
+Free email alerts cover up to five providers, and the selected stack survives the email sign-in round trip.
+
 Find provider slugs in the [OutageDeck provider catalog](https://outagedeck.com/providers?utm_source=krew&utm_medium=plugin&utm_campaign=krew_plugin).
 
 ## Discover workload dependencies
@@ -55,6 +65,12 @@ Check annotated workloads in the current namespace:
 
 ```bash
 kubectl outagedeck
+```
+
+Create the alert setup link from those same workload annotations:
+
+```bash
+kubectl outagedeck alerts
 ```
 
 Or scope discovery with familiar kubectl flags:
@@ -86,7 +102,7 @@ Run `kubectl outagedeck --help` for all namespace, selector, kubeconfig, context
 
 ## Get proactive alerts
 
-The plugin answers when you run a check. [OutageDeck managed alerts](https://outagedeck.com/alerts?utm_source=krew&utm_medium=plugin&utm_campaign=krew_plugin) notify you when a watched provider changes state:
+The plugin answers when you run a check. `kubectl outagedeck alerts` prints a prefilled account link for either named providers or the providers discovered from annotated workloads. [OutageDeck managed alerts](https://outagedeck.com/alerts?utm_source=krew&utm_medium=plugin&utm_campaign=krew_plugin) notify you when a watched provider changes state:
 
 - Free: email alerts for up to five named providers, with no card required.
 - Paid: Slack, Microsoft Teams, Discord, webhook, and email delivery; unlimited providers; whole-stack and per-service scopes; and a higher API quota.
